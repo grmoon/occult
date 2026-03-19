@@ -6,6 +6,12 @@
 
         public async Task<IReadOnlySet<Stream>> GetRandomAudioAsync(int maxCount, CancellationToken cancellationToken = default)
         {
+            var paths = await GetRandomAudioPathsAsync(maxCount, cancellationToken);
+            return new HashSet<Stream>(paths.Select(file => (Stream)File.OpenRead(file)));
+        }
+
+        public Task<IReadOnlySet<string>> GetRandomAudioPathsAsync(int maxCount, CancellationToken cancellationToken = default)
+        {
             ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCount);
 
             var files = Directory.GetFiles(AudioDirectory);
@@ -24,7 +30,7 @@
                 selected.Add(files[Random.Shared.Next(files.Length)]);
             }
 
-            return new HashSet<Stream>(selected.Select(file => (Stream)File.OpenRead(file)));
+            return Task.FromResult<IReadOnlySet<string>>(selected);
         }
     }
 }

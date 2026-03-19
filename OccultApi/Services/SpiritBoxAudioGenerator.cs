@@ -1,5 +1,6 @@
 ﻿using System.Speech.Synthesis;
 using Microsoft.Extensions.Logging;
+using NAudio.Wave;
 
 namespace OccultApi.Services
 {
@@ -27,6 +28,41 @@ namespace OccultApi.Services
             synthStream.Position = 0;
 
             return synthStream;
+        }
+
+        protected static List<(int Seconds, byte[] Data)> SegmentAudio(Stream audioStream)
+        {
+            audioStream.Position = 0;
+            using var reader = new WaveFileReader(audioStream);
+            var bytesPerSecond = reader.WaveFormat.AverageBytesPerSecond;
+            var blockAlign = reader.WaveFormat.BlockAlign;
+            var totalBytes = reader.Length;
+            var segments = new List<(int Seconds, byte[] Data)>();
+            var offset = 0L;
+
+            while (offset < totalBytes)
+            {
+                var seconds = Random.Shared.Next(1, MaxSegmentDurationSeconds + 1);
+                var length = (int)((long)seconds * bytesPerSecond);
+                length -= length % blockAlign;
+                length = (int)Math.Min(length, totalBytes - offset);
+
+                reader.Position = offset;
+                var buffer = new byte[length];
+                var totalRead = 0;
+
+                while (totalRead < length)
+                {
+                    var read = reader.Read(buffer, totalRead, length - totalRead);
+                    if (read == 0) break;
+                    totalRead += read;
+                }
+
+                segments.Add((seconds, buffer.AsSpan(0, totalRead).ToArray()));
+                offset += length;
+            }
+
+            return segments;
         }
     }
 }
