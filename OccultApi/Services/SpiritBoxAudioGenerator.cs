@@ -3,32 +3,30 @@ using Microsoft.Extensions.Logging;
 
 namespace OccultApi.Services
 {
-    public class SpiritBoxAudioGenerator : ISpiritBoxAudioGenerator
+
+    public abstract class SpiritBoxAudioGenerator : ISpiritBoxAudioGenerator
     {
-        private readonly ISpiritBoxAudioGetter _audioGetter;
+        protected const int MaxSegmentDurationSeconds = 5;
         private readonly ILogger<SpiritBoxAudioGenerator> _logger;
 
-        public SpiritBoxAudioGenerator(ISpiritBoxAudioGetter audioGetter, ILogger<SpiritBoxAudioGenerator> logger)
+        public SpiritBoxAudioGenerator(ILogger<SpiritBoxAudioGenerator> logger)
         {
-            _audioGetter = audioGetter;
             _logger = logger;
         }
 
-        public async Task<Stream> GenerateAsync(string text, CancellationToken cancellationToken = default)
+        public abstract Task<Stream> GenerateAsync(string text, CancellationToken cancellationToken = default);
+
+        protected async Task<Stream> GenerateSourceAudioAsync(string text, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Synthesizing audio for text of length {Length}", text.Length);
-
             using var synthesizer = new SpeechSynthesizer();
-            var stream = new MemoryStream();
+            var synthStream = new MemoryStream();
 
-            synthesizer.SetOutputToWaveStream(stream);
+            synthesizer.SetOutputToWaveStream(synthStream);
             synthesizer.Speak(text);
 
-            stream.Position = 0;
+            synthStream.Position = 0;
 
-            _logger.LogInformation("Synthesized {Bytes} bytes of audio", stream.Length);
-
-            return stream;
+            return synthStream;
         }
     }
 }

@@ -5,19 +5,23 @@ namespace OccultApi.Services
     public class SpiritBoxResponseGenerator : ISpiritBoxResponseGenerator
     {
         private readonly ISpiritBoxTextResponseGenerator _textGenerator;
-        private readonly ISpiritBoxAudioGenerator _audioGenerator;
+        private readonly ISpiritBoxAudioGeneratorFactory _audioGeneratorFactory;
 
-        public SpiritBoxResponseGenerator(ISpiritBoxTextResponseGenerator textGenerator, ISpiritBoxAudioGenerator audioGenerator)
+        public SpiritBoxResponseGenerator(
+            ISpiritBoxTextResponseGenerator textGenerator, 
+            ISpiritBoxAudioGeneratorFactory audioGeneratorFactory
+        )
         {
             _textGenerator = textGenerator;
-            _audioGenerator = audioGenerator;
+            _audioGeneratorFactory = audioGeneratorFactory;
         }
 
-        public async Task<SpiritBoxResponse> GenerateAsync(string prompt, CancellationToken cancellationToken = default)
+        public async Task<SpiritBoxResponse> GenerateAsync(SpiritBoxRequest request, CancellationToken cancellationToken = default)
         {
-            var textResponse = await _textGenerator.RespondAsync(prompt, cancellationToken);
+            var audioGenerator = _audioGeneratorFactory.Create(request.ResponseType);
+            var textResponse = await _textGenerator.RespondAsync(request.Prompt, cancellationToken);
 
-            using var audioStream = await _audioGenerator.GenerateAsync(textResponse, cancellationToken);
+            using var audioStream = await audioGenerator.GenerateAsync(textResponse, cancellationToken);
             var memoryStream = new MemoryStream();
             await audioStream.CopyToAsync(memoryStream, cancellationToken);
             var audioBase64 = Convert.ToBase64String(memoryStream.ToArray());

@@ -22,7 +22,7 @@ builder.Services
 builder
     .Services
     .AddSingleton<ISpiritBoxAudioGetter, SpiritBoxAudioGetter>()
-    .AddSingleton<ISpiritBoxAudioGenerator, SpiritBoxAudioGenerator>()
+    .AddSingleton<ISpiritBoxAudioGeneratorFactory, SpiritBoxAudioGeneratorFactory>()
     .AddSingleton<ISpiritBoxResponseGenerator, SpiritBoxResponseGenerator>()
     .AddSingleton<ISpiritBoxTextResponseGenerator, SpiritBoxTextResponseGenerator>()
     .AddSingleton<TokenCredential, DefaultAzureCredential>()

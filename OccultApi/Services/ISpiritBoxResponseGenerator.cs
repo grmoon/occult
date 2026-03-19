@@ -4,6 +4,6 @@ namespace OccultApi.Services
 {
     public interface ISpiritBoxResponseGenerator
     {
-        Task<SpiritBoxResponse> GenerateAsync(string prompt, CancellationToken cancellationToken = default);
+        Task<SpiritBoxResponse> GenerateAsync(SpiritBoxRequest request, CancellationToken cancellationToken = default);
     }
 }

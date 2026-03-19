@@ -28,7 +28,7 @@ function App() {
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: question.trim() }),
+        body: JSON.stringify({ prompt: question.trim(), responseType: 'Orthodox' }),
       })
 
       if (!res.ok) throw new Error()

@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -21,7 +23,13 @@ public class SpiritBoxTrigger
     [Function(nameof(SpiritBoxTrigger))]
     public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Anonymous, "post")] HttpRequest req)
     {
-        var request = await req.ReadFromJsonAsync<SpiritBoxRequest>();
+        var jsonOptions = new JsonSerializerOptions
+        {
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false) },
+            PropertyNameCaseInsensitive = true
+        };
+
+        var request = await req.ReadFromJsonAsync<SpiritBoxRequest>(jsonOptions);
 
         if (request is null)
         {
@@ -30,7 +38,7 @@ public class SpiritBoxTrigger
 
         _logger.LogInformation("Spirit box received prompt: {Prompt}", request.Prompt);
 
-        var response = await _responseGenerator.GenerateAsync(request.Prompt);
+        var response = await _responseGenerator.GenerateAsync(request);
 
         return new OkObjectResult(response);
     }
