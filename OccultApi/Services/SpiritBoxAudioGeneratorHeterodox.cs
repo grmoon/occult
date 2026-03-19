@@ -1,8 +1,10 @@
 ﻿using Microsoft.Extensions.Logging;
 using NAudio.Wave;
+using System.Runtime.Versioning;
 
 namespace OccultApi.Services
 {
+    [SupportedOSPlatform("windows")]
     public class SpiritBoxAudioGeneratorHeterodox : SpiritBoxAudioGenerator 
     {
         private readonly ISpiritBoxAudioGetter _audioGetter;

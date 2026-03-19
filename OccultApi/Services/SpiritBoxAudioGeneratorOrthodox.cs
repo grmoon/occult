@@ -1,8 +1,10 @@
 ﻿using Microsoft.Extensions.Logging;
 using NAudio.Wave;
+using System.Runtime.Versioning;
 
 namespace OccultApi.Services
 {
+    [SupportedOSPlatform("windows")]
     public class SpiritBoxAudioGeneratorOrthodox : SpiritBoxAudioGenerator
     {
         private readonly ISpiritBoxAudioGetter _audioGetter;
@@ -19,7 +21,7 @@ namespace OccultApi.Services
             var synthStream = await GenerateSourceAudioAsync(text, cancellationToken);
             _logger.LogInformation("Synthesized {Bytes} bytes of source audio", synthStream.Length);
 
-            var segments = SegmentAudio(synthStream);
+            var segments = SegmentAudio(synthStream).Select(val => val.Seconds).ToArray();
             _logger.LogInformation("Split audio into {Count} segments", segments.Length);
 
             var audioStreams = await _audioGetter.GetRandomAudioAsync(segments.Length, cancellationToken);
@@ -66,29 +68,6 @@ namespace OccultApi.Services
             return outputStream;
         }
 
-        internal static int[] SegmentAudio(Stream audioStream)
-        {
-            using var reader = new WaveFileReader(audioStream);
-            var bytesPerSecond = reader.WaveFormat.AverageBytesPerSecond;
-            var blockAlign = reader.WaveFormat.BlockAlign;
-            var totalBytes = reader.Length;
-            var offset = 0L;
-            var chunkLengths = new List<int>();
-
-            while (offset < totalBytes)
-            {
-                var seconds = Random.Shared.Next(1, MaxSegmentDurationSeconds);
-                var length = (long)seconds * bytesPerSecond;
-                length -= length % blockAlign;
-                length = Math.Min(length, totalBytes - offset);
-
-                chunkLengths.Add(seconds);
-
-                offset += length;
-            }
-
-            return chunkLengths.ToArray();
-        }
 
         private static byte[] GetRandomMp3Chunk(Stream mp3Stream, int seconds, out WaveFormat waveFormat)
         {

@@ -1,0 +1,13 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "AiServicesEndpoint": "https://qc-agent-gm-ai-foundry-eastus2.services.ai.azure.com/",
+    "AiDeploymentName": "gpt-5-mini"
+  },
+  "Host": {
+    "CORS": "http://localhost:4280,http://localhost:3000,http://localhost:5173",
+    "CORSCredentials": true
+  }
+}

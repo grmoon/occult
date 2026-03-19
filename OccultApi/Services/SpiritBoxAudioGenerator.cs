@@ -1,10 +1,12 @@
-﻿using System.Speech.Synthesis;
+﻿using System.Runtime.Versioning;
+using System.Speech.Synthesis;
 using Microsoft.Extensions.Logging;
 using NAudio.Wave;
 
 namespace OccultApi.Services
 {
 
+    [SupportedOSPlatform("windows")]
     public abstract class SpiritBoxAudioGenerator : ISpiritBoxAudioGenerator
     {
         protected const int MaxSegmentDurationSeconds = 5;

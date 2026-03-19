@@ -19,23 +19,34 @@ builder.Services
     .ConfigureFunctionsApplicationInsights();
 
 
+var aiServicesEndpoint = new Uri(builder.Configuration["AiServicesEndpoint"]
+    ?? throw new InvalidOperationException("AiServicesEndpoint is not configured."));
+
+var deploymentName = builder.Configuration["AiDeploymentName"]
+    ?? throw new InvalidOperationException("AiDeploymentName is not configured.");
+
+var isDev = builder.Environment.IsDevelopment();
+
+var managedIdentityClientId = isDev ? null : (builder.Configuration["ManagedIdentityClientId"]
+    ?? throw new InvalidOperationException("ManagedIdentityClientId is not configured."));
+
 builder
     .Services
     .AddSingleton<ISpiritBoxAudioGetter, SpiritBoxAudioGetter>()
     .AddSingleton<ISpiritBoxAudioGeneratorFactory, SpiritBoxAudioGeneratorFactory>()
     .AddSingleton<ISpiritBoxResponseGenerator, SpiritBoxResponseGenerator>()
     .AddSingleton<ISpiritBoxTextResponseGenerator, SpiritBoxTextResponseGenerator>()
-    .AddSingleton<TokenCredential, DefaultAzureCredential>()
+    .AddSingleton<TokenCredential>(_ => isDev
+        ? new DefaultAzureCredential()
+        : new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(managedIdentityClientId!)))
     .AddSingleton(sp =>
     {
-        var aiServicesEndpoint = new Uri("https://qc-agent-gm-ai-foundry-eastus2.services.ai.azure.com/");
         var credential = sp.GetRequiredService<TokenCredential>();
 
         return new AzureOpenAIClient(aiServicesEndpoint, credential);
     })
     .AddSingleton(sp =>
     {
-        var deploymentName = "gpt-5-mini";
         var client = sp.GetRequiredService<AzureOpenAIClient>();
 
         return client.GetChatClient(deploymentName).AsIChatClient();
