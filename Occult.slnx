@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="OccultApi/OccultApi.csproj" />
+  <Project Path="OccultFrontend/OccultFrontend.esproj">
+    <Build />
+    <Deploy />
+  </Project>
+</Solution>
