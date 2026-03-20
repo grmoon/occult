@@ -11,12 +11,16 @@ namespace OccultApi.Services
         private readonly ILogger<SpiritBoxAudioGeneratorFactory> _logger;
         private readonly ILoggerFactory _loggerFactory;
         private readonly ISpiritBoxTextResponseGenerator _textResponseGenerator;
+        private readonly float _orthodoxMinSeconds;
+        private readonly float _orthodoxMaxSeconds;
 
         public SpiritBoxAudioGeneratorFactory(
             ISpiritBoxAudioGetter audioGetter,
             SpeechConfig speechConfig,
             ILoggerFactory loggerFactory,
-            ISpiritBoxTextResponseGenerator textResponseGenerator
+            ISpiritBoxTextResponseGenerator textResponseGenerator,
+            float orthodoxMinSeconds,
+            float orthodoxMaxSeconds
         )
         {
             _loggerFactory = loggerFactory;
@@ -24,6 +28,8 @@ namespace OccultApi.Services
             _speechConfig = speechConfig;
             _logger = loggerFactory.CreateLogger<SpiritBoxAudioGeneratorFactory>();
             _textResponseGenerator = textResponseGenerator;
+            _orthodoxMinSeconds = orthodoxMinSeconds;
+            _orthodoxMaxSeconds = orthodoxMaxSeconds;
         }
 
         public ISpiritBoxAudioGenerator Create(SpiritBoxResponseType responseType)
@@ -41,7 +47,9 @@ namespace OccultApi.Services
                     return new SpiritBoxAudioGeneratorOrthodox(
                         audioGetter: _audioGetter,
                         speechConfig: _speechConfig,
-                        logger: _loggerFactory.CreateLogger<SpiritBoxAudioGeneratorOrthodox>()
+                        logger: _loggerFactory.CreateLogger<SpiritBoxAudioGeneratorOrthodox>(),
+                        minSeconds: _orthodoxMinSeconds,
+                        maxSeconds: _orthodoxMaxSeconds
                     );
                 default:
                     throw new ArgumentException($"Unsupported response type: {responseType}");

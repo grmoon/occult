@@ -1,11 +1,40 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 const API_URL = `${import.meta.env.VITE_API_HOST ?? ''}/api/SpiritBoxTrigger`
-console.log("here", import.meta.env.VITE_API_HOST)
 const isDev = import.meta.env.DEV
 
 type ResponseType = 'Orthodox' | 'Heterodox'
+
+interface LoopingAudio {
+  source: AudioBufferSourceNode
+  gain: GainNode
+}
+
+/** Fetch a raw ArrayBuffer from a URL */
+async function fetchAudioData(url: string): Promise<ArrayBuffer> {
+  const res = await fetch(url)
+  return res.arrayBuffer()
+}
+
+/** Start a gapless-looping buffer source at the given volume, optionally at a random offset */
+function startLoop(ctx: AudioContext, buffer: AudioBuffer, volume: number, randomOffset = false): LoopingAudio {
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
+  source.loop = true
+
+  const gain = ctx.createGain()
+  gain.gain.value = volume
+  source.connect(gain).connect(ctx.destination)
+
+  if (randomOffset) {
+    source.start(0, Math.random() * buffer.duration)
+  } else {
+    source.start()
+  }
+
+  return { source, gain }
+}
 
 function App() {
   const [question, setQuestion] = useState('')
@@ -16,16 +45,46 @@ function App() {
   const [responseType, setResponseType] = useState<ResponseType>('Orthodox')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [audioUnlocked, setAudioUnlocked] = useState(false)
+  const [unlocking, setUnlocking] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const staticDataRef = useRef<ArrayBuffer | null>(null)
+  const corruptedDataRef = useRef<ArrayBuffer | null>(null)
+  const staticBufferRef = useRef<AudioBuffer | null>(null)
+  const corruptedBufferRef = useRef<AudioBuffer | null>(null)
+  const ambientRef = useRef<LoopingAudio | null>(null)
+  const channelingRef = useRef<LoopingAudio | null>(null)
+  const channelingStartRef = useRef<number>(0)
 
-  function unlockAudio() {
-    // Create an AudioContext during a user gesture to unlock audio playback
+  // Pre-fetch raw audio data on mount (no user gesture needed)
+  useEffect(() => {
+    Promise.all([
+      fetchAudioData('/static.mp3'),
+      fetchAudioData('/corrupted.mp3'),
+    ]).then(([staticData, corruptedData]) => {
+      staticDataRef.current = staticData
+      corruptedDataRef.current = corruptedData
+    })
+  }, [])
+
+  async function unlockAudio() {
+    setUnlocking(true)
+
     const ctx = new AudioContext()
-    const buffer = ctx.createBuffer(1, 1, 22050)
-    const source = ctx.createBufferSource()
-    source.buffer = buffer
-    source.connect(ctx.destination)
-    source.start()
+    audioCtxRef.current = ctx
+
+    // Decode pre-fetched audio data (fast since bytes are already in memory)
+    const [staticBuffer, corruptedBuffer] = await Promise.all([
+      ctx.decodeAudioData(staticDataRef.current ?? await fetchAudioData('/static.mp3')),
+      ctx.decodeAudioData(corruptedDataRef.current ?? await fetchAudioData('/corrupted.mp3')),
+      new Promise(r => setTimeout(r, 1000)), // Ensure "Opening…" shows for at least 1s
+    ])
+    staticBufferRef.current = staticBuffer
+    corruptedBufferRef.current = corruptedBuffer
+
+    // Start ambient static loop at a random position
+    ambientRef.current = startLoop(ctx, staticBuffer, 0.01, true)
+
     setAudioUnlocked(true)
   }
 
@@ -39,10 +98,21 @@ function App() {
       audioRef.current = null
     }
 
+    const ctx = audioCtxRef.current!
+
     setLoading(true)
     setResponse(null)
     setHasResponse(false)
     setError(null)
+
+    // Mute ambient static while channeling
+    if (ambientRef.current) {
+      ambientRef.current.gain.gain.value = 0
+    }
+
+    // Start gapless corrupted loop
+    channelingRef.current = startLoop(ctx, corruptedBufferRef.current!, 0.0025)
+    channelingStartRef.current = Date.now()
 
     try {
       const res = await fetch(API_URL, {
@@ -56,13 +126,46 @@ function App() {
       setResponse(data.response ?? null)
       setHasResponse(true)
 
+      // Calculate how long channeling played before the response
+      const channelingDuration = Date.now() - channelingStartRef.current
+
       if (data.audio) {
         const audio = new Audio(`data:audio/wav;base64,${data.audio}`)
         audioRef.current = audio
+        audioRef.current.volume = 0.003
+        audio.addEventListener('ended', () => {
+          // After API audio ends, keep channeling for the same leading duration, then resume static
+          setTimeout(() => {
+            if (channelingRef.current) {
+              channelingRef.current.source.stop()
+              channelingRef.current = null
+            }
+            if (ambientRef.current) {
+              ambientRef.current.gain.gain.value = 0.01
+            }
+          }, channelingDuration)
+        })
         audio.play()
+      } else {
+        // No spirit box audio — stop channeling and resume ambient static
+        if (channelingRef.current) {
+          channelingRef.current.source.stop()
+          channelingRef.current = null
+        }
+        if (ambientRef.current) {
+          ambientRef.current.gain.gain.value = 0.01
+        }
       }
     } catch {
       setError('The connection falters… the spirits have withdrawn.')
+      // Stop channeling and resume ambient static on error
+      if (channelingRef.current) {
+        channelingRef.current.source.stop()
+        channelingRef.current = null
+      }
+      if (ambientRef.current) {
+        ambientRef.current.gain.gain.value = 0.01
+      }
     } finally {
       setLoading(false)
       setQuestion('')
@@ -116,8 +219,8 @@ function App() {
           <div className="audio-gate-content">
             <h1 className="spirit-title">Spirit Box</h1>
             <p className="audio-gate-text">The spirits communicate through sound.<br />Allow audio to open the channel.</p>
-            <button className="spirit-button" onClick={unlockAudio}>
-              Open the Channel
+            <button className={`spirit-button${unlocking ? ' opening' : ''}`} onClick={unlockAudio} disabled={unlocking}>
+              {unlocking ? 'Opening…' : 'Open the Channel'}
             </button>
           </div>
         </div>

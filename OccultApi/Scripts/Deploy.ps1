@@ -33,6 +33,9 @@ try {
             AiServicesEndpoint="https://occult-foundry.services.ai.azure.com/" `
             ManagedIdentityClientId="7799f367-dc92-434c-8cb6-3ad1553a66bf" `
             AiSpeechRegion="westus" `
+            AudioStorageUri="https://occultst.blob.core.windows.net/audio" `
+            OrthodoxMinSeconds="0.5" `
+            OrthodoxMaxSeconds="1" `
         --output none
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to configure app settings"

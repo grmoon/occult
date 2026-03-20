@@ -6,7 +6,9 @@
     "AiServicesEndpoint": "https://occult-foundry.services.ai.azure.com/",
     "AiDeploymentName": "gpt-4.1",
     "AiSpeechRegion": "westus",
-    "AudioStorageUri": "https://occultst.blob.core.windows.net/audio"
+    "AudioStorageUri": "https://occultst.blob.core.windows.net/audio",
+    "OrthodoxMinSeconds": "0.5",
+    "OrthodoxMaxSeconds": "1"
   },
   "Host": {
     "CORS": "http://localhost:4280,http://localhost:3000,http://localhost:5173",

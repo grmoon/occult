@@ -9,6 +9,7 @@ using Microsoft.CognitiveServices.Speech;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using OccultApi.Services;
 
 
@@ -33,6 +34,12 @@ var deploymentName = builder.Configuration["AiDeploymentName"]
 var audioStorageUri = new Uri(builder.Configuration["AudioStorageUri"]
     ?? throw new InvalidOperationException("AudioStorageUri is not configured."));
 
+var orthodoxMinSeconds = float.Parse(builder.Configuration["OrthodoxMinSeconds"]
+    ?? throw new InvalidOperationException("OrthodoxMinSeconds is not configured."));
+
+var orthodoxMaxSeconds = float.Parse(builder.Configuration["OrthodoxMaxSeconds"]
+    ?? throw new InvalidOperationException("OrthodoxMaxSeconds is not configured."));
+
 var isDev = builder.Environment.IsDevelopment();
 
 var managedIdentityClientId = isDev ? null : (builder.Configuration["ManagedIdentityClientId"]
@@ -46,7 +53,14 @@ builder
         return new BlobContainerClient(audioStorageUri, credential);
     })
     .AddSingleton<ISpiritBoxAudioGetter, SpiritBoxAudioGetter>()
-    .AddSingleton<ISpiritBoxAudioGeneratorFactory, SpiritBoxAudioGeneratorFactory>()
+    .AddSingleton<ISpiritBoxAudioGeneratorFactory>(sp => new SpiritBoxAudioGeneratorFactory(
+        audioGetter: sp.GetRequiredService<ISpiritBoxAudioGetter>(),
+        speechConfig: sp.GetRequiredService<SpeechConfig>(),
+        loggerFactory: sp.GetRequiredService<ILoggerFactory>(),
+        textResponseGenerator: sp.GetRequiredService<ISpiritBoxTextResponseGenerator>(),
+        orthodoxMinSeconds: orthodoxMinSeconds,
+        orthodoxMaxSeconds: orthodoxMaxSeconds
+    ))
     .AddSingleton<ISpiritBoxResponseGenerator, SpiritBoxResponseGenerator>()
     .AddSingleton<ISpiritBoxTextResponseGenerator, SpiritBoxTextResponseGenerator>()
     .AddSingleton(sp =>

@@ -8,30 +8,40 @@ namespace OccultApi.Services
     {
         private readonly ISpiritBoxAudioGetter _audioGetter;
         private readonly ILogger<SpiritBoxAudioGeneratorOrthodox> _logger;
+        private readonly float _minSeconds;
+        private readonly float _maxSeconds;
 
-        public SpiritBoxAudioGeneratorOrthodox(ISpiritBoxAudioGetter audioGetter, SpeechConfig speechConfig, ILogger<SpiritBoxAudioGeneratorOrthodox> logger) : base(speechConfig, logger)
+        public SpiritBoxAudioGeneratorOrthodox(ISpiritBoxAudioGetter audioGetter, SpeechConfig speechConfig, ILogger<SpiritBoxAudioGeneratorOrthodox> logger, float minSeconds = 0.5f, float maxSeconds = 1f) : base(speechConfig, logger)
         {
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(minSeconds, 0);
+            ArgumentOutOfRangeException.ThrowIfLessThan(maxSeconds, minSeconds);
+
             _audioGetter = audioGetter;
             _logger = logger;
+            _minSeconds = minSeconds;
+            _maxSeconds = maxSeconds;
         }
 
-        public override async Task<SpiritboxAudioGeneratorResult> GenerateAsync(string text, CancellationToken cancellationToken = default)
+        public override async Task<SpiritboxAudioGeneratorResult> GenerateAsync(string prompt, CancellationToken cancellationToken = default)
         {
-            var totalSeconds = Random.Shared.Next(10, 21);
-            var segmentList = new List<int>();
-            var remaining = totalSeconds;
+            var totalDuration = _minSeconds + (float)Random.Shared.NextDouble() * (_maxSeconds - _minSeconds);
 
-            while (remaining > 0)
+            var segments = new List<double>();
+            var remaining = (double)totalDuration;
+
+            while (remaining >= 1)
             {
                 var seconds = Math.Min(Random.Shared.Next(1, MaxSegmentDurationSeconds + 1), remaining);
-                segmentList.Add(seconds);
+                segments.Add(seconds);
                 remaining -= seconds;
             }
 
-            var segments = segmentList.ToArray();
-            _logger.LogInformation("Generated {Count} segments totalling {Total}s", segments.Length, totalSeconds);
+            if (remaining > 0)
+                segments.Add(remaining);
 
-            var audioStreams = await _audioGetter.GetRandomAudioAsync(segments.Length, cancellationToken);
+            _logger.LogInformation("Generated {Count} segments totalling {Total:F2}s", segments.Count, totalDuration);
+
+            var audioStreams = await _audioGetter.GetRandomAudioAsync(segments.Count, cancellationToken);
             _logger.LogInformation("Retrieved {Count} random audio streams", audioStreams.Count);
 
             var audioBuffers = new List<byte[]>();
@@ -46,9 +56,9 @@ namespace OccultApi.Services
             }
 
             var available = new List<byte[]>();
-            var assignedBuffers = new byte[segments.Length][];
+            var assignedBuffers = new byte[segments.Count][];
 
-            for (var i = 0; i < segments.Length; i++)
+            for (var i = 0; i < segments.Count; i++)
             {
                 if (available.Count == 0)
                     available.AddRange(audioBuffers);
@@ -62,14 +72,14 @@ namespace OccultApi.Services
 
             var chunks = new List<float[]>();
             int sampleRate = 0, channels = 0;
-            for (var i = 0; i < segments.Length; i++)
+            for (var i = 0; i < segments.Count; i++)
             {
                 var (samples, sr, ch) = GetRandomMp3Chunk(new MemoryStream(assignedBuffers[i]), segments[i]);
                 chunks.Add(samples);
                 sampleRate = sr;
                 channels = ch;
-                _logger.LogInformation("Extracted {Seconds}s chunk ({Samples} samples) for segment {Index}/{Total}",
-                    segments[i], samples.Length, i + 1, segments.Length);
+                _logger.LogInformation("Extracted {Seconds:F2}s chunk ({Samples} samples) for segment {Index}/{Total}",
+                    segments[i], samples.Length, i + 1, segments.Count);
             }
 
             var allSamples = chunks.SelectMany(c => c).ToArray();
@@ -81,7 +91,7 @@ namespace OccultApi.Services
             return new SpiritboxAudioGeneratorResult { AudioStream = outputStream, TextResponse = null };
         }
 
-        private static (float[] Samples, int SampleRate, int Channels) GetRandomMp3Chunk(Stream audioStream, int seconds)
+        private static (float[] Samples, int SampleRate, int Channels) GetRandomMp3Chunk(Stream audioStream, double seconds)
         {
             using var mpegFile = new MpegFile(audioStream);
             var sampleRate = mpegFile.SampleRate;

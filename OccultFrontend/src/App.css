@@ -204,6 +204,11 @@
   to   { opacity: 0.85; transform: translateY(0); }
 }
 
+@keyframes button-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.06); }
+  50%      { box-shadow: 0 0 16px 2px rgba(255, 255, 255, 0.06); }
+}
+
 /* ── Dev settings ── */
 .dev-settings {
   position: fixed;
@@ -311,6 +316,17 @@
   justify-content: center;
   min-height: 100vh;
   padding: 2rem;
+}
+
+.spirit-button.opening {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.25);
+  animation: pulse-static 2s ease-in-out infinite;
+  cursor: default;
+}
+
+.bg-noise.intense {
+  opacity: 0.5;
 }
 
 .audio-gate-content {
