@@ -10,6 +10,7 @@ type ResponseType = 'Orthodox' | 'Heterodox'
 function App() {
   const [question, setQuestion] = useState('')
   const [response, setResponse] = useState<string | null>(null)
+  const [hasResponse, setHasResponse] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [responseType, setResponseType] = useState<ResponseType>('Orthodox')
@@ -40,6 +41,7 @@ function App() {
 
     setLoading(true)
     setResponse(null)
+    setHasResponse(false)
     setError(null)
 
     try {
@@ -51,7 +53,8 @@ function App() {
 
       if (!res.ok) throw new Error()
       const data = await res.json()
-      setResponse(data.response)
+      setResponse(data.response ?? null)
+      setHasResponse(true)
 
       if (data.audio) {
         const audio = new Audio(`data:audio/wav;base64,${data.audio}`)
@@ -140,7 +143,7 @@ function App() {
           </button>
         </form>
 
-        <div className={`spirit-response${response || error ? ' visible' : ''}${loading ? ' channeling' : ''}`}>
+        <div className={`spirit-response${hasResponse || error ? ' visible' : ''}${loading ? ' channeling' : ''}`}>
           {loading && <p className="spirit-static">⦁ ⦁ ⦁</p>}
           {error && <p className="spirit-error">{error}</p>}
           {isDev && response && <p className="spirit-message">{response}</p>}

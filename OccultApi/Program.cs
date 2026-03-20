@@ -1,6 +1,7 @@
 using Azure.AI.OpenAI;
 using Azure.Core;
 using Azure.Identity;
+using Azure.Storage.Blobs;
 using Microsoft.Agents.AI;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Builder;
@@ -29,6 +30,9 @@ var aiSpeechRegion = builder.Configuration["AiSpeechRegion"]
 var deploymentName = builder.Configuration["AiDeploymentName"]
     ?? throw new InvalidOperationException("AiDeploymentName is not configured.");
 
+var audioStorageUri = new Uri(builder.Configuration["AudioStorageUri"]
+    ?? throw new InvalidOperationException("AudioStorageUri is not configured."));
+
 var isDev = builder.Environment.IsDevelopment();
 
 var managedIdentityClientId = isDev ? null : (builder.Configuration["ManagedIdentityClientId"]
@@ -36,6 +40,11 @@ var managedIdentityClientId = isDev ? null : (builder.Configuration["ManagedIden
 
 builder
     .Services
+    .AddSingleton(sp =>
+    {
+        var credential = sp.GetRequiredService<TokenCredential>();
+        return new BlobContainerClient(audioStorageUri, credential);
+    })
     .AddSingleton<ISpiritBoxAudioGetter, SpiritBoxAudioGetter>()
     .AddSingleton<ISpiritBoxAudioGeneratorFactory, SpiritBoxAudioGeneratorFactory>()
     .AddSingleton<ISpiritBoxResponseGenerator, SpiritBoxResponseGenerator>()

@@ -15,38 +15,56 @@ namespace OccultApi.Services
             _logger = logger;
         }
 
-        public override async Task<Stream> GenerateAsync(string text, CancellationToken cancellationToken = default)
+        public override async Task<SpiritboxAudioGeneratorResult> GenerateAsync(string text, CancellationToken cancellationToken = default)
         {
-            var synthStream = await GenerateSourceAudioAsync(text, cancellationToken);
-            _logger.LogInformation("Synthesized {Bytes} bytes of source audio", synthStream.Length);
+            var totalSeconds = Random.Shared.Next(10, 21);
+            var segmentList = new List<int>();
+            var remaining = totalSeconds;
 
-            var segments = SegmentAudio(synthStream).Select(val => val.Seconds).ToArray();
-            _logger.LogInformation("Split audio into {Count} segments", segments.Length);
+            while (remaining > 0)
+            {
+                var seconds = Math.Min(Random.Shared.Next(1, MaxSegmentDurationSeconds + 1), remaining);
+                segmentList.Add(seconds);
+                remaining -= seconds;
+            }
 
-            var audioStreams = await _audioGetter.GetRandomAudioPathsAsync(segments.Length, cancellationToken);
-            _logger.LogInformation("Retrieved {Count} random audio paths", audioStreams.Count);
+            var segments = segmentList.ToArray();
+            _logger.LogInformation("Generated {Count} segments totalling {Total}s", segments.Length, totalSeconds);
 
-            var pool = audioStreams.ToList();
-            var available = new List<string>();
-            var assignedPaths = new string[segments.Length];
+            var audioStreams = await _audioGetter.GetRandomAudioAsync(segments.Length, cancellationToken);
+            _logger.LogInformation("Retrieved {Count} random audio streams", audioStreams.Count);
+
+            var audioBuffers = new List<byte[]>();
+            foreach (var stream in audioStreams)
+            {
+                using (stream)
+                {
+                    using var ms = new MemoryStream();
+                    await stream.CopyToAsync(ms, cancellationToken);
+                    audioBuffers.Add(ms.ToArray());
+                }
+            }
+
+            var available = new List<byte[]>();
+            var assignedBuffers = new byte[segments.Length][];
 
             for (var i = 0; i < segments.Length; i++)
             {
                 if (available.Count == 0)
-                    available.AddRange(pool);
+                    available.AddRange(audioBuffers);
 
                 var index = Random.Shared.Next(available.Count);
-                assignedPaths[i] = available[index];
+                assignedBuffers[i] = available[index];
                 available.RemoveAt(index);
             }
 
-            _logger.LogInformation("Assigned audio paths to segments");
+            _logger.LogInformation("Assigned audio buffers to segments");
 
             var chunks = new List<float[]>();
             int sampleRate = 0, channels = 0;
             for (var i = 0; i < segments.Length; i++)
             {
-                var (samples, sr, ch) = GetRandomMp3Chunk(assignedPaths[i], segments[i]);
+                var (samples, sr, ch) = GetRandomMp3Chunk(new MemoryStream(assignedBuffers[i]), segments[i]);
                 chunks.Add(samples);
                 sampleRate = sr;
                 channels = ch;
@@ -60,12 +78,12 @@ namespace OccultApi.Services
             var outputStream = new MemoryStream(outputBytes);
             _logger.LogInformation("Output stream is {Bytes} bytes", outputStream.Length);
 
-            return outputStream;
+            return new SpiritboxAudioGeneratorResult { AudioStream = outputStream, TextResponse = null };
         }
 
-        private static (float[] Samples, int SampleRate, int Channels) GetRandomMp3Chunk(string filePath, int seconds)
+        private static (float[] Samples, int SampleRate, int Channels) GetRandomMp3Chunk(Stream audioStream, int seconds)
         {
-            using var mpegFile = new MpegFile(filePath);
+            using var mpegFile = new MpegFile(audioStream);
             var sampleRate = mpegFile.SampleRate;
             var channels = mpegFile.Channels;
             var totalSeconds = mpegFile.Duration.TotalSeconds;

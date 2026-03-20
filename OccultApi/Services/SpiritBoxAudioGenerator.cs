@@ -22,7 +22,7 @@ namespace OccultApi.Services
             _logger = logger;
         }
 
-        public abstract Task<Stream> GenerateAsync(string text, CancellationToken cancellationToken = default);
+        public abstract Task<SpiritboxAudioGeneratorResult> GenerateAsync(string prompt, CancellationToken cancellationToken = default);
 
         protected async Task<Stream> GenerateSourceAudioAsync(string text, CancellationToken cancellationToken)
         {

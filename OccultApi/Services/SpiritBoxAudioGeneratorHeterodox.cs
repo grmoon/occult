@@ -4,49 +4,67 @@ using NLayer;
 
 namespace OccultApi.Services
 {
-    public class SpiritBoxAudioGeneratorHeterodox : SpiritBoxAudioGenerator 
+    public class SpiritBoxAudioGeneratorHeterodox : SpiritBoxAudioGenerator
     {
         private readonly ISpiritBoxAudioGetter _audioGetter;
         private readonly ILogger<SpiritBoxAudioGeneratorHeterodox> _logger;
+        private readonly ISpiritBoxTextResponseGenerator _textResponseGenerator;
 
-        public SpiritBoxAudioGeneratorHeterodox(ISpiritBoxAudioGetter audioGetter, SpeechConfig speechConfig, ILogger<SpiritBoxAudioGeneratorHeterodox> logger) : base(speechConfig, logger)
+        public SpiritBoxAudioGeneratorHeterodox(
+            ISpiritBoxAudioGetter audioGetter,
+            SpeechConfig speechConfig,
+            ILogger<SpiritBoxAudioGeneratorHeterodox> logger,
+            ISpiritBoxTextResponseGenerator textResponseGenerator
+        ) : base(speechConfig, logger)
         {
             _audioGetter = audioGetter;
             _logger = logger;
+            _textResponseGenerator = textResponseGenerator;
         }
 
-        public override async Task<Stream> GenerateAsync(string text, CancellationToken cancellationToken = default)
+        public override async Task<SpiritboxAudioGeneratorResult> GenerateAsync(string prompt, CancellationToken cancellationToken = default)
         {
-            var synthStream = await GenerateSourceAudioAsync(text, cancellationToken);
+            var response = await _textResponseGenerator.RespondAsync(prompt, cancellationToken);
+            var synthStream = await GenerateSourceAudioAsync(response, cancellationToken);
             _logger.LogInformation("Synthesized {Bytes} bytes of source audio", synthStream.Length);
 
             var segments = SegmentAudio(synthStream);
             _logger.LogInformation("Split audio into {Count} segments", segments.Count);
 
-            var audioStreams = await _audioGetter.GetRandomAudioPathsAsync(segments.Count, cancellationToken);
-            _logger.LogInformation("Retrieved {Count} random audio paths", audioStreams.Count);
+            var audioStreams = await _audioGetter.GetRandomAudioAsync(segments.Count, cancellationToken);
+            _logger.LogInformation("Retrieved {Count} random audio streams", audioStreams.Count);
 
-            var pool = audioStreams.ToList();
-            var available = new List<string>();
-            var assignedPaths = new string[segments.Count];
+            var audioBuffers = new List<byte[]>();
+            foreach (var stream in audioStreams)
+            {
+                using (stream)
+                {
+                    using var ms = new MemoryStream();
+                    await stream.CopyToAsync(ms, cancellationToken);
+                    audioBuffers.Add(ms.ToArray());
+                }
+            }
+
+            var available = new List<byte[]>();
+            var assignedBuffers = new byte[segments.Count][];
 
             for (var i = 0; i < segments.Count; i++)
             {
                 if (available.Count == 0)
-                    available.AddRange(pool);
+                    available.AddRange(audioBuffers);
 
                 var index = Random.Shared.Next(available.Count);
-                assignedPaths[i] = available[index];
+                assignedBuffers[i] = available[index];
                 available.RemoveAt(index);
             }
 
-            _logger.LogInformation("Assigned audio paths to segments");
+            _logger.LogInformation("Assigned audio buffers to segments");
 
             var matchedChunks = new (float[] Samples, int SampleRate, int Channels)[segments.Count];
             for (var i = 0; i < segments.Count; i++)
             {
                 var searchSeconds = segments[i].Seconds * 10;
-                matchedChunks[i] = FindSimilarSection(segments[i].Data, assignedPaths[i], searchSeconds);
+                matchedChunks[i] = FindSimilarSection(segments[i].Data, new MemoryStream(assignedBuffers[i]), searchSeconds);
                 _logger.LogInformation("Matched segment {Index}/{Total} ({Seconds}s, searched {SearchSeconds}s window, {SampleCount} samples)",
                     i + 1, segments.Count, segments[i].Seconds, searchSeconds, matchedChunks[i].Samples.Length);
             }
@@ -57,15 +75,19 @@ namespace OccultApi.Services
             var outputStream = new MemoryStream(outputBytes);
             _logger.LogInformation("Output stream is {Bytes} bytes", outputStream.Length);
 
-            return outputStream;
+            return new SpiritboxAudioGeneratorResult
+            {
+                AudioStream = outputStream,
+                TextResponse = response
+            };
         }
 
-        private static (float[] Samples, int SampleRate, int Channels) FindSimilarSection(byte[] segmentData, string audioFilePath, int searchSeconds)
+        private static (float[] Samples, int SampleRate, int Channels) FindSimilarSection(byte[] segmentData, Stream audioStream, int searchSeconds)
         {
             var segmentSamples = PcmBytesToSamples(segmentData);
             var segmentDurationSeconds = (double)segmentSamples.Length / (SynthSampleRate * SynthChannels);
 
-            using var mpegFile = new MpegFile(audioFilePath);
+            using var mpegFile = new MpegFile(audioStream);
             var sampleRate = mpegFile.SampleRate;
             var channels = mpegFile.Channels;
             var totalSeconds = mpegFile.Duration.TotalSeconds;
