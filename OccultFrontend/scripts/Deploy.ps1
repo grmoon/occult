@@ -15,8 +15,13 @@ $AppName    = 'occult-web-app'
 
 Push-Location $ProjectDir
 try {
-    Write-Host 'Installing dependencies...' -ForegroundColor Cyan
-    npm ci
+    if (-not (Test-Path node_modules) -or
+        (Get-Item package-lock.json).LastWriteTime -gt (Get-Item node_modules).LastWriteTime) {
+        Write-Host 'Installing dependencies...' -ForegroundColor Cyan
+        npm ci
+    } else {
+        Write-Host 'Dependencies up to date.' -ForegroundColor DarkGray
+    }
 
     Write-Host 'Building project...' -ForegroundColor Cyan
     $previousApiHost = $env:VITE_API_HOST

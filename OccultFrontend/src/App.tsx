@@ -111,7 +111,7 @@ function App() {
     }
 
     // Start gapless corrupted loop
-    channelingRef.current = startLoop(ctx, corruptedBufferRef.current!, 0.0025)
+    channelingRef.current = startLoop(ctx, corruptedBufferRef.current!, 0.0025, true)
     channelingStartRef.current = Date.now()
 
     try {

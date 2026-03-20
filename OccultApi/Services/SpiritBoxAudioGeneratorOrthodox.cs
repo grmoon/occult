@@ -10,16 +10,22 @@ namespace OccultApi.Services
         private readonly ILogger<SpiritBoxAudioGeneratorOrthodox> _logger;
         private readonly float _minSeconds;
         private readonly float _maxSeconds;
+        private readonly float _segmentMinSeconds;
+        private readonly float _segmentMaxSeconds;
 
-        public SpiritBoxAudioGeneratorOrthodox(ISpiritBoxAudioGetter audioGetter, SpeechConfig speechConfig, ILogger<SpiritBoxAudioGeneratorOrthodox> logger, float minSeconds = 0.5f, float maxSeconds = 1f) : base(speechConfig, logger)
+        public SpiritBoxAudioGeneratorOrthodox(ISpiritBoxAudioGetter audioGetter, SpeechConfig speechConfig, ILogger<SpiritBoxAudioGeneratorOrthodox> logger, float minSeconds, float maxSeconds, float segmentMinSeconds, float segmentMaxSeconds) : base(speechConfig, logger)
         {
             ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(minSeconds, 0);
             ArgumentOutOfRangeException.ThrowIfLessThan(maxSeconds, minSeconds);
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(segmentMinSeconds, 0);
+            ArgumentOutOfRangeException.ThrowIfLessThan(segmentMaxSeconds, segmentMinSeconds);
 
             _audioGetter = audioGetter;
             _logger = logger;
             _minSeconds = minSeconds;
             _maxSeconds = maxSeconds;
+            _segmentMinSeconds = segmentMinSeconds;
+            _segmentMaxSeconds = segmentMaxSeconds;
         }
 
         public override async Task<SpiritboxAudioGeneratorResult> GenerateAsync(string prompt, CancellationToken cancellationToken = default)
@@ -29,9 +35,9 @@ namespace OccultApi.Services
             var segments = new List<double>();
             var remaining = (double)totalDuration;
 
-            while (remaining >= 1)
+            while (remaining >= _segmentMinSeconds)
             {
-                var seconds = Math.Min(Random.Shared.Next(1, MaxSegmentDurationSeconds + 1), remaining);
+                var seconds = Math.Min(_segmentMinSeconds + Random.Shared.NextDouble() * (_segmentMaxSeconds - _segmentMinSeconds), remaining);
                 segments.Add(seconds);
                 remaining -= seconds;
             }

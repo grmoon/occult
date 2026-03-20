@@ -40,6 +40,12 @@ var orthodoxMinSeconds = float.Parse(builder.Configuration["OrthodoxMinSeconds"]
 var orthodoxMaxSeconds = float.Parse(builder.Configuration["OrthodoxMaxSeconds"]
     ?? throw new InvalidOperationException("OrthodoxMaxSeconds is not configured."));
 
+var orthodoxSegmentMinSeconds = float.Parse(builder.Configuration["OrthodoxSegmentMinSeconds"]
+    ?? throw new InvalidOperationException("OrthodoxSegmentMinSeconds is not configured."));
+
+var orthodoxSegmentMaxSeconds = float.Parse(builder.Configuration["OrthodoxSegmentMaxSeconds"]
+    ?? throw new InvalidOperationException("OrthodoxSegmentMaxSeconds is not configured."));
+
 var isDev = builder.Environment.IsDevelopment();
 
 var managedIdentityClientId = isDev ? null : (builder.Configuration["ManagedIdentityClientId"]
@@ -59,7 +65,9 @@ builder
         loggerFactory: sp.GetRequiredService<ILoggerFactory>(),
         textResponseGenerator: sp.GetRequiredService<ISpiritBoxTextResponseGenerator>(),
         orthodoxMinSeconds: orthodoxMinSeconds,
-        orthodoxMaxSeconds: orthodoxMaxSeconds
+        orthodoxMaxSeconds: orthodoxMaxSeconds,
+        orthodoxSegmentMinSeconds: orthodoxSegmentMinSeconds,
+        orthodoxSegmentMaxSeconds: orthodoxSegmentMaxSeconds
     ))
     .AddSingleton<ISpiritBoxResponseGenerator, SpiritBoxResponseGenerator>()
     .AddSingleton<ISpiritBoxTextResponseGenerator, SpiritBoxTextResponseGenerator>()
