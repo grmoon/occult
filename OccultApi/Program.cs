@@ -4,6 +4,7 @@ using Azure.Identity;
 using Microsoft.Agents.AI;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Builder;
+using Microsoft.CognitiveServices.Speech;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -22,6 +23,9 @@ builder.Services
 var aiServicesEndpoint = new Uri(builder.Configuration["AiServicesEndpoint"]
     ?? throw new InvalidOperationException("AiServicesEndpoint is not configured."));
 
+var aiSpeechRegion = builder.Configuration["AiSpeechRegion"]
+    ?? throw new InvalidOperationException("AiSpeechRegion is not configured.");
+
 var deploymentName = builder.Configuration["AiDeploymentName"]
     ?? throw new InvalidOperationException("AiDeploymentName is not configured.");
 
@@ -36,8 +40,14 @@ builder
     .AddSingleton<ISpiritBoxAudioGeneratorFactory, SpiritBoxAudioGeneratorFactory>()
     .AddSingleton<ISpiritBoxResponseGenerator, SpiritBoxResponseGenerator>()
     .AddSingleton<ISpiritBoxTextResponseGenerator, SpiritBoxTextResponseGenerator>()
+    .AddSingleton(sp =>
+    {
+        var credential = sp.GetRequiredService<TokenCredential>();
+
+        return SpeechConfig.FromEndpoint(aiServicesEndpoint, credential);
+    })
     .AddSingleton<TokenCredential>(_ => isDev
-        ? new DefaultAzureCredential()
+        ? new AzureCliCredential()
         : new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(managedIdentityClientId!)))
     .AddSingleton(sp =>
     {

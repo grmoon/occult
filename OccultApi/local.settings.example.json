@@ -3,8 +3,9 @@
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
-    "AiServicesEndpoint": "https://qc-agent-gm-ai-foundry-eastus2.services.ai.azure.com/",
-    "AiDeploymentName": "gpt-5-mini"
+    "AiServicesEndpoint": "https://occult-foundry.services.ai.azure.com/",
+    "AiDeploymentName": "gpt-4.1",
+    "AiSpeechRegion": "westus"
   },
   "Host": {
     "CORS": "http://localhost:4280,http://localhost:3000,http://localhost:5173",

@@ -1,19 +1,24 @@
-﻿using System.Runtime.Versioning;
-using System.Speech.Synthesis;
+﻿using Microsoft.CognitiveServices.Speech;
 using Microsoft.Extensions.Logging;
-using NAudio.Wave;
 
 namespace OccultApi.Services
 {
 
-    [SupportedOSPlatform("windows")]
     public abstract class SpiritBoxAudioGenerator : ISpiritBoxAudioGenerator
     {
         protected const int MaxSegmentDurationSeconds = 5;
+        protected const int SynthSampleRate = 16000;
+        protected const int SynthBitsPerSample = 16;
+        protected const int SynthChannels = 1;
+        protected const int SynthBytesPerSecond = SynthSampleRate * SynthBitsPerSample / 8 * SynthChannels;
+        protected const int SynthBlockAlign = SynthBitsPerSample / 8 * SynthChannels;
+        private const int WavHeaderSize = 44;
+        private readonly SpeechConfig _speechConfig;
         private readonly ILogger<SpiritBoxAudioGenerator> _logger;
 
-        public SpiritBoxAudioGenerator(ILogger<SpiritBoxAudioGenerator> logger)
+        public SpiritBoxAudioGenerator(SpeechConfig speechConfig, ILogger<SpiritBoxAudioGenerator> logger)
         {
+            _speechConfig = speechConfig;
             _logger = logger;
         }
 
@@ -21,41 +26,43 @@ namespace OccultApi.Services
 
         protected async Task<Stream> GenerateSourceAudioAsync(string text, CancellationToken cancellationToken)
         {
-            using var synthesizer = new SpeechSynthesizer();
-            var synthStream = new MemoryStream();
+            _speechConfig.SetSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm);
 
-            synthesizer.SetOutputToWaveStream(synthStream);
-            synthesizer.Speak(text);
+            using var synthesizer = new SpeechSynthesizer(_speechConfig, null);
+            var result = await synthesizer.SpeakTextAsync(text);
 
-            synthStream.Position = 0;
+            if (result.Reason == ResultReason.Canceled)
+            {
+                var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
+                throw new InvalidOperationException($"Speech synthesis canceled: {cancellation.Reason}, {cancellation.ErrorDetails}");
+            }
 
+            var synthStream = new MemoryStream(result.AudioData);
             return synthStream;
         }
 
         protected static List<(int Seconds, byte[] Data)> SegmentAudio(Stream audioStream)
         {
-            audioStream.Position = 0;
-            using var reader = new WaveFileReader(audioStream);
-            var bytesPerSecond = reader.WaveFormat.AverageBytesPerSecond;
-            var blockAlign = reader.WaveFormat.BlockAlign;
-            var totalBytes = reader.Length;
+            audioStream.Position = WavHeaderSize;
+
+            var totalBytes = audioStream.Length - WavHeaderSize;
             var segments = new List<(int Seconds, byte[] Data)>();
             var offset = 0L;
 
             while (offset < totalBytes)
             {
                 var seconds = Random.Shared.Next(1, MaxSegmentDurationSeconds + 1);
-                var length = (int)((long)seconds * bytesPerSecond);
-                length -= length % blockAlign;
+                var length = seconds * SynthBytesPerSecond;
+                length -= length % SynthBlockAlign;
                 length = (int)Math.Min(length, totalBytes - offset);
 
-                reader.Position = offset;
+                audioStream.Position = WavHeaderSize + offset;
                 var buffer = new byte[length];
                 var totalRead = 0;
 
                 while (totalRead < length)
                 {
-                    var read = reader.Read(buffer, totalRead, length - totalRead);
+                    var read = audioStream.Read(buffer, totalRead, length - totalRead);
                     if (read == 0) break;
                     totalRead += read;
                 }
@@ -65,6 +72,57 @@ namespace OccultApi.Services
             }
 
             return segments;
+        }
+
+        protected static float[] PcmBytesToSamples(byte[] data)
+        {
+            var sampleCount = data.Length / 2;
+            var samples = new float[sampleCount];
+
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var sample16 = (short)(data[i * 2] | (data[i * 2 + 1] << 8));
+                samples[i] = sample16 / 32768f;
+            }
+
+            return samples;
+        }
+
+        protected static byte[] WriteWav(float[] samples, int sampleRate, int channels)
+        {
+            var bitsPerSample = 32;
+            var bytesPerSample = bitsPerSample / 8;
+            var dataSize = samples.Length * bytesPerSample;
+            var fileSize = WavHeaderSize + dataSize;
+
+            using var stream = new MemoryStream(fileSize);
+            using var writer = new BinaryWriter(stream);
+
+            // RIFF header
+            writer.Write("RIFF"u8);
+            writer.Write(fileSize - 8);
+            writer.Write("WAVE"u8);
+
+            // fmt chunk
+            writer.Write("fmt "u8);
+            writer.Write(16); // chunk size
+            writer.Write((short)3); // IEEE float
+            writer.Write((short)channels);
+            writer.Write(sampleRate);
+            writer.Write(sampleRate * channels * bytesPerSample); // byte rate
+            writer.Write((short)(channels * bytesPerSample)); // block align
+            writer.Write((short)bitsPerSample);
+
+            // data chunk
+            writer.Write("data"u8);
+            writer.Write(dataSize);
+
+            foreach (var sample in samples)
+            {
+                writer.Write(sample);
+            }
+
+            return stream.ToArray();
         }
     }
 }

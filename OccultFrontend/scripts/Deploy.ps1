@@ -19,10 +19,16 @@ try {
     npm ci
 
     Write-Host 'Building project...' -ForegroundColor Cyan
+    $previousApiHost = $env:VITE_API_HOST
     $env:VITE_API_HOST = 'https://occult-function-app-e9effga5bfgae5f6.westus-01.azurewebsites.net'
-    npm run build
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Build failed with exit code $LASTEXITCODE"
+    try {
+        npm run build
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Build failed with exit code $LASTEXITCODE"
+        }
+    }
+    finally {
+        $env:VITE_API_HOST = $previousApiHost
     }
 
     Write-Host "Deploying to $AppName..." -ForegroundColor Cyan

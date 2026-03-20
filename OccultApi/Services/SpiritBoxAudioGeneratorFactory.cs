@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using Microsoft.CognitiveServices.Speech;
+using Microsoft.Extensions.Logging;
 using OccultApi.Models;
 
 namespace OccultApi.Services
@@ -6,16 +7,19 @@ namespace OccultApi.Services
     public class SpiritBoxAudioGeneratorFactory : ISpiritBoxAudioGeneratorFactory
     {
         private readonly ISpiritBoxAudioGetter _audioGetter;
+        private readonly SpeechConfig _speechConfig;
         private readonly ILogger<SpiritBoxAudioGeneratorFactory> _logger;
         private readonly ILoggerFactory _loggerFactory;
 
         public SpiritBoxAudioGeneratorFactory(
             ISpiritBoxAudioGetter audioGetter,
+            SpeechConfig speechConfig,
             ILoggerFactory loggerFactory
         )
         {
             _loggerFactory = loggerFactory;
             _audioGetter = audioGetter;
+            _speechConfig = speechConfig;
             _logger = loggerFactory.CreateLogger<SpiritBoxAudioGeneratorFactory>();
         }
 
@@ -26,11 +30,13 @@ namespace OccultApi.Services
                 case SpiritBoxResponseType.Heterodox:
                     return new SpiritBoxAudioGeneratorHeterodox(
                         audioGetter: _audioGetter,
+                        speechConfig: _speechConfig,
                         logger: _loggerFactory.CreateLogger<SpiritBoxAudioGeneratorHeterodox>()
                     );
                 case SpiritBoxResponseType.Orthodox:
                     return new SpiritBoxAudioGeneratorOrthodox(
                         audioGetter: _audioGetter,
+                        speechConfig: _speechConfig,
                         logger: _loggerFactory.CreateLogger<SpiritBoxAudioGeneratorOrthodox>()
                     );
                 default:

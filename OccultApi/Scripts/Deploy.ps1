@@ -32,6 +32,7 @@ try {
             AiDeploymentName="gpt-4.1" `
             AiServicesEndpoint="https://occult-foundry.services.ai.azure.com/" `
             ManagedIdentityClientId="7799f367-dc92-434c-8cb6-3ad1553a66bf" `
+            AiSpeechRegion="westus" `
         --output none
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to configure app settings"

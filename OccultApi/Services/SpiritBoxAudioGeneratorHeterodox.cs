@@ -1,16 +1,15 @@
-﻿using Microsoft.Extensions.Logging;
-using NAudio.Wave;
-using System.Runtime.Versioning;
+﻿using Microsoft.CognitiveServices.Speech;
+using Microsoft.Extensions.Logging;
+using NLayer;
 
 namespace OccultApi.Services
 {
-    [SupportedOSPlatform("windows")]
     public class SpiritBoxAudioGeneratorHeterodox : SpiritBoxAudioGenerator 
     {
         private readonly ISpiritBoxAudioGetter _audioGetter;
         private readonly ILogger<SpiritBoxAudioGeneratorHeterodox> _logger;
 
-        public SpiritBoxAudioGeneratorHeterodox(ISpiritBoxAudioGetter audioGetter, ILogger<SpiritBoxAudioGeneratorHeterodox> logger) : base(logger)
+        public SpiritBoxAudioGeneratorHeterodox(ISpiritBoxAudioGetter audioGetter, SpeechConfig speechConfig, ILogger<SpiritBoxAudioGeneratorHeterodox> logger) : base(speechConfig, logger)
         {
             _audioGetter = audioGetter;
             _logger = logger;
@@ -43,46 +42,33 @@ namespace OccultApi.Services
 
             _logger.LogInformation("Assigned audio paths to segments");
 
-            synthStream.Position = 0;
-            using var waveReader = new WaveFileReader(synthStream);
-            var segmentFormat = waveReader.WaveFormat;
-
-            var matchedChunks = new (float[] Samples, WaveFormat Format)[segments.Count];
+            var matchedChunks = new (float[] Samples, int SampleRate, int Channels)[segments.Count];
             for (var i = 0; i < segments.Count; i++)
             {
                 var searchSeconds = segments[i].Seconds * 10;
-                matchedChunks[i] = FindSimilarSection(segments[i].Data, segmentFormat, assignedPaths[i], searchSeconds);
+                matchedChunks[i] = FindSimilarSection(segments[i].Data, assignedPaths[i], searchSeconds);
                 _logger.LogInformation("Matched segment {Index}/{Total} ({Seconds}s, searched {SearchSeconds}s window, {SampleCount} samples)",
                     i + 1, segments.Count, segments[i].Seconds, searchSeconds, matchedChunks[i].Samples.Length);
             }
 
-            var outputFormat = WaveFormat.CreateIeeeFloatWaveFormat(
-                matchedChunks[0].Format.SampleRate, matchedChunks[0].Format.Channels);
+            var allSamples = matchedChunks.SelectMany(c => c.Samples).ToArray();
+            var outputBytes = WriteWav(allSamples, matchedChunks[0].SampleRate, matchedChunks[0].Channels);
 
-            var tempStream = new MemoryStream();
-            using (var writer = new WaveFileWriter(tempStream, outputFormat))
-            {
-                foreach (var chunk in matchedChunks)
-                {
-                    writer.WriteSamples(chunk.Samples, 0, chunk.Samples.Length);
-                }
-            }
-
-            var outputStream = new MemoryStream(tempStream.ToArray());
+            var outputStream = new MemoryStream(outputBytes);
             _logger.LogInformation("Output stream is {Bytes} bytes", outputStream.Length);
 
             return outputStream;
         }
 
-        private static (float[] Samples, WaveFormat Format) FindSimilarSection(byte[] segmentData, WaveFormat segmentFormat, string audioFilePath, int searchSeconds)
+        private static (float[] Samples, int SampleRate, int Channels) FindSimilarSection(byte[] segmentData, string audioFilePath, int searchSeconds)
         {
-            var segmentSamples = BytesToSamples(segmentData, segmentFormat);
-            var segmentDurationSeconds = (double)segmentSamples.Length / (segmentFormat.SampleRate * segmentFormat.Channels);
+            var segmentSamples = PcmBytesToSamples(segmentData);
+            var segmentDurationSeconds = (double)segmentSamples.Length / (SynthSampleRate * SynthChannels);
 
-            using var reader = new MediaFoundationReader(audioFilePath);
-            var sampleRate = reader.WaveFormat.SampleRate;
-            var channels = reader.WaveFormat.Channels;
-            var totalSeconds = reader.TotalTime.TotalSeconds;
+            using var mpegFile = new MpegFile(audioFilePath);
+            var sampleRate = mpegFile.SampleRate;
+            var channels = mpegFile.Channels;
+            var totalSeconds = mpegFile.Duration.TotalSeconds;
 
             var targetSampleCount = (int)(segmentDurationSeconds * sampleRate * channels);
 
@@ -90,22 +76,14 @@ namespace OccultApi.Services
             var maxStart = Math.Max(0, totalSeconds - chunkDuration);
             var startSeconds = maxStart > 0 ? Random.Shared.NextDouble() * maxStart : 0;
 
-            reader.CurrentTime = TimeSpan.FromSeconds(startSeconds);
+            mpegFile.Time = TimeSpan.FromSeconds(startSeconds);
 
-            var provider = reader.ToSampleProvider();
             var maxSamples = (int)(sampleRate * channels * chunkDuration);
             var audioSamples = new float[maxSamples];
-            var totalRead = 0;
-
-            while (totalRead < maxSamples)
-            {
-                var read = provider.Read(audioSamples, totalRead, maxSamples - totalRead);
-                if (read == 0) break;
-                totalRead += read;
-            }
+            var totalRead = mpegFile.ReadSamples(audioSamples, 0, maxSamples);
 
             if (totalRead <= targetSampleCount)
-                return (audioSamples.AsSpan(0, totalRead).ToArray(), reader.WaveFormat);
+                return (audioSamples.AsSpan(0, totalRead).ToArray(), sampleRate, channels);
 
             var frameSize = Math.Max(1, sampleRate / 100);
             var segmentEnvelope = ComputeEnergyEnvelope(segmentSamples, frameSize);
@@ -114,11 +92,10 @@ namespace OccultApi.Services
             var bestScore = double.MinValue;
             var maxOffset = totalRead - targetSampleCount;
 
-            var envelopeTargetLength = targetSampleCount;
             for (var offset = 0; offset <= maxOffset; offset += frameSize)
             {
                 var windowEnvelope = ComputeEnergyEnvelope(
-                    audioSamples.AsSpan(offset, envelopeTargetLength), frameSize);
+                    audioSamples.AsSpan(offset, targetSampleCount), frameSize);
 
                 var score = NormalizedCrossCorrelation(segmentEnvelope, windowEnvelope);
                 if (score > bestScore)
@@ -129,17 +106,7 @@ namespace OccultApi.Services
             }
 
             var matchLength = Math.Min(targetSampleCount, totalRead - bestOffset);
-            return (audioSamples.AsSpan(bestOffset, matchLength).ToArray(), reader.WaveFormat);
-        }
-
-        private static float[] BytesToSamples(byte[] data, WaveFormat format)
-        {
-            using var stream = new MemoryStream(data);
-            using var reader = new RawSourceWaveStream(stream, format);
-            var provider = reader.ToSampleProvider();
-            var samples = new float[data.Length / format.BlockAlign * format.Channels];
-            var read = provider.Read(samples, 0, samples.Length);
-            return samples.AsSpan(0, read).ToArray();
+            return (audioSamples.AsSpan(bestOffset, matchLength).ToArray(), sampleRate, channels);
         }
 
         private static float[] ComputeEnergyEnvelope(ReadOnlySpan<float> samples, int frameSize)
