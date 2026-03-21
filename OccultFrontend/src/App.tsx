@@ -18,14 +18,14 @@ async function fetchAudioData(url: string): Promise<ArrayBuffer> {
 }
 
 /** Start a gapless-looping buffer source at the given volume, optionally at a random offset */
-function startLoop(ctx: AudioContext, buffer: AudioBuffer, volume: number, randomOffset = false): LoopingAudio {
+function startLoop(ctx: AudioContext, buffer: AudioBuffer, volume: number, destination: AudioNode, randomOffset = false): LoopingAudio {
   const source = ctx.createBufferSource()
   source.buffer = buffer
   source.loop = true
 
   const gain = ctx.createGain()
   gain.gain.value = volume
-  source.connect(gain).connect(ctx.destination)
+  source.connect(gain).connect(destination)
 
   if (randomOffset) {
     source.start(0, Math.random() * buffer.duration)
@@ -46,8 +46,10 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [audioUnlocked, setAudioUnlocked] = useState(false)
   const [unlocking, setUnlocking] = useState(false)
+  const [volume, setVolume] = useState(0.5)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const masterGainRef = useRef<GainNode | null>(null)
   const staticDataRef = useRef<ArrayBuffer | null>(null)
   const corruptedDataRef = useRef<ArrayBuffer | null>(null)
   const staticBufferRef = useRef<AudioBuffer | null>(null)
@@ -73,6 +75,12 @@ function App() {
     const ctx = new AudioContext()
     audioCtxRef.current = ctx
 
+    // Master gain node for global volume control
+    const masterGain = ctx.createGain()
+    masterGain.gain.value = volume
+    masterGain.connect(ctx.destination)
+    masterGainRef.current = masterGain
+
     // Decode pre-fetched audio data (fast since bytes are already in memory)
     const [staticBuffer, corruptedBuffer] = await Promise.all([
       ctx.decodeAudioData(staticDataRef.current ?? await fetchAudioData('/static.mp3')),
@@ -83,9 +91,19 @@ function App() {
     corruptedBufferRef.current = corruptedBuffer
 
     // Start ambient static loop at a random position
-    ambientRef.current = startLoop(ctx, staticBuffer, 0.01, true)
+    ambientRef.current = startLoop(ctx, staticBuffer, 0.1, masterGain, true)
 
     setAudioUnlocked(true)
+  }
+
+  function handleVolumeChange(newVolume: number) {
+    setVolume(newVolume)
+    if (masterGainRef.current) {
+      masterGainRef.current.gain.value = newVolume
+    }
+    if (audioRef.current) {
+      audioRef.current.volume = 0.03 * newVolume
+    }
   }
 
   async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
@@ -111,7 +129,7 @@ function App() {
     }
 
     // Start gapless corrupted loop
-    channelingRef.current = startLoop(ctx, corruptedBufferRef.current!, 0.0025, true)
+    channelingRef.current = startLoop(ctx, corruptedBufferRef.current!, 0.025, masterGainRef.current!, true)
     channelingStartRef.current = Date.now()
 
     try {
@@ -132,7 +150,7 @@ function App() {
       if (data.audio) {
         const audio = new Audio(`data:audio/wav;base64,${data.audio}`)
         audioRef.current = audio
-        audioRef.current.volume = 0.003
+        audioRef.current.volume = 0.03 * volume
         audio.addEventListener('ended', () => {
           // After API audio ends, keep channeling for the same leading duration, then resume static
           setTimeout(() => {
@@ -141,7 +159,7 @@ function App() {
               channelingRef.current = null
             }
             if (ambientRef.current) {
-              ambientRef.current.gain.gain.value = 0.01
+              ambientRef.current.gain.gain.value = 0.1
             }
           }, channelingDuration)
         })
@@ -153,7 +171,7 @@ function App() {
           channelingRef.current = null
         }
         if (ambientRef.current) {
-          ambientRef.current.gain.gain.value = 0.01
+          ambientRef.current.gain.gain.value = 0.1
         }
       }
     } catch {
@@ -164,7 +182,7 @@ function App() {
         channelingRef.current = null
       }
       if (ambientRef.current) {
-        ambientRef.current.gain.gain.value = 0.01
+        ambientRef.current.gain.gain.value = 0.1
       }
     } finally {
       setLoading(false)
@@ -250,6 +268,19 @@ function App() {
           {loading && <p className="spirit-static">⦁ ⦁ ⦁</p>}
           {error && <p className="spirit-error">{error}</p>}
           {isDev && response && <p className="spirit-message">{response}</p>}
+        </div>
+
+        <div className="volume-control">
+          <input
+            className="volume-slider"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume}
+            onChange={(e) => handleVolumeChange(Number(e.target.value))}
+            title="Volume"
+          />
         </div>
       </div>}
     </>
